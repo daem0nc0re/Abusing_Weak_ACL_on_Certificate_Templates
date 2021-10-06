@@ -1,5 +1,5 @@
 # Abusing Weak ACL on Certificate Templates
-## Abstruct
+## Abstract
 At Black Hat USA 2021, Will Schroeder ([@harmj0y](https://twitter.com/harmj0y)) and Lee Christensen ([@tifkin_](https://twitter.com/tifkin_)) presented about attack surface in Active Directory Certificate Services (["Certified Pre-Owned: Abusing Active Directory Certificate Services"](https://posts.specterops.io/certified-pre-owned-d95910965cd2)). 
 There are many technical details in the [whitepaper](https://www.specterops.io/assets/resources/Certified_Pre-Owned.pdf). 
 The whitepaper mentioned that a certificate template with weak ACL can lead to domain escalation, but there is no technical detail about the procedure.
@@ -929,7 +929,7 @@ In this article, we performed ACE attack to a vulnerable template for domain esc
 Excessive allocation of WriteDacl permissions for domain objects lead to domain escalation vulnerability.
 In order to reduce the possibility of being attacked, certificate templates must be hardened.
 
-## Acknowledgment
+## Acknowledgments
 + Will Schroeder ([@harmj0y](https://twitter.com/harmj0y))
 + Lee Christensen ([@tifkin_](https://twitter.com/tifkin_))
 + Christoph Falta ([@cfalta](https://twitter.com/cfalta))
